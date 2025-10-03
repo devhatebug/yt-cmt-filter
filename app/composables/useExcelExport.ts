@@ -1,5 +1,5 @@
 // composables/useExcelExport.ts
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx/xlsx.mjs";
 import type { YouTubeComment, VideoData } from "../types/comment";
 import { formatDate, stripHtmlTags } from "../utils/format";
 

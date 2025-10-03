@@ -16,5 +16,9 @@ export default defineNuxtConfig({
     vite: {
       plugins: [tailwindcss()],
     },
+    webpack: (config: { resolve: { fallback: { fs: boolean } } }) => {
+      config.resolve.fallback = { fs: false };
+      return config;
+    },
   },
 });
