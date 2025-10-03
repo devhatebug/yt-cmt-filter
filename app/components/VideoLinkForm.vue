@@ -2,12 +2,29 @@
 const props = defineProps<{
   modelValue: string;
   loading?: boolean;
+  progress?: {
+    current: number;
+    total: number;
+  };
 }>();
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
   submit: [];
 }>();
+
+const progressPercent = computed(() => {
+  if (!props.progress || props.progress.total === 0) return 0;
+  return Math.round((props.progress.current / props.progress.total) * 100);
+});
+
+const progressText = computed(() => {
+  if (!props.progress || !props.loading) return "";
+  if (props.progress.total > 0) {
+    return `Đang tải ${props.progress.current} / ${props.progress.total} comments...`;
+  }
+  return `Đang tải ${props.progress.current} comments...`;
+});
 
 const videoUrl = computed({
   get: () => props.modelValue,
@@ -53,6 +70,21 @@ const handleSubmit = () => {
           @click="handleSubmit">
           Lấy dữ liệu
         </TobiButton>
+      </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div v-if="loading && progress" class="mt-4">
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-sm text-gray-600">{{ progressText }}</span>
+        <span class="text-sm font-semibold text-primary-600">
+          {{ progressPercent }}%
+        </span>
+      </div>
+      <div class="w-full bg-gray-200 rounded-full h-2.5">
+        <div
+          class="bg-primary-600 h-2.5 rounded-full transition-all duration-300"
+          :style="{ width: `${progressPercent}%` }"></div>
       </div>
     </div>
   </TobiCard>

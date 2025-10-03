@@ -15,6 +15,10 @@ const videoUrl = ref("");
 const isLoading = ref(false);
 const videoData = ref<VideoData | null>(null);
 const allComments = ref<YouTubeComment[]>([]);
+const loadingProgress = ref({
+  current: 0,
+  total: 0,
+});
 
 const filters = ref<FilterOptions>({
   removeEmojiOnly: false,
@@ -46,16 +50,22 @@ const fetchData = async () => {
   }
 
   isLoading.value = true;
+  loadingProgress.value = { current: 0, total: 0 };
 
   try {
-    const result = await fetchVideoData(videoUrl.value);
+    const result = await fetchVideoData(videoUrl.value, (current, total) => {
+      loadingProgress.value = { current, total };
+    });
+
     videoData.value = result.videoData;
     allComments.value = result.comments;
 
     const totalCount = countTotalComments(result.comments);
     toast.add({
       title: "Thành công",
-      description: `Đã tải ${totalCount} bình luận (bao gồm ${result.comments.length} comment chính và replies)`,
+      description: `Đã tải ${totalCount} bình luận (bao gồm ${
+        result.comments.length
+      } comment chính và ${totalCount - result.comments.length} replies)`,
       color: "success",
       icon: "i-heroicons-check-circle",
     });
@@ -69,6 +79,7 @@ const fetchData = async () => {
     });
   } finally {
     isLoading.value = false;
+    loadingProgress.value = { current: 0, total: 0 };
   }
 };
 
@@ -106,6 +117,7 @@ const exportData = () => {
     <VideoLinkForm
       v-model="videoUrl"
       :loading="isLoading"
+      :progress="loadingProgress"
       @submit="fetchData"
       class="mb-6" />
 

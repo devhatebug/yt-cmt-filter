@@ -76,8 +76,8 @@ export const useYouTubeData = () => {
 
       const video = response.items[0];
       return {
-        title: video.snippet.title,
-        commentCount: parseInt(video.statistics.commentCount || "0"),
+        title: video?.snippet.title,
+        commentCount: parseInt(video?.statistics.commentCount || "0"),
       };
     } catch (error: unknown) {
       const err = error as { response?: { status?: number } };
@@ -90,23 +90,53 @@ export const useYouTubeData = () => {
     }
   };
 
+  // Helper: Retry với exponential backoff
+  const fetchWithRetry = async <T>(
+    fetchFn: () => Promise<T>,
+    maxRetries = 3,
+    initialDelay = 1000
+  ): Promise<T> => {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await fetchFn();
+      } catch (error) {
+        lastError = error as Error;
+        const delay = initialDelay * Math.pow(2, attempt); // Exponential backoff
+
+        console.warn(
+          `Retry ${attempt + 1}/${maxRetries} sau ${delay}ms...`,
+          error
+        );
+
+        // Chờ trước khi retry
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
+    throw lastError || new Error("Failed after retries");
+  };
+
   // Lấy replies cho một comment cha
   const getReplies = async (parentId: string): Promise<YouTubeComment[]> => {
     const replies: YouTubeComment[] = [];
     let pageToken: string | undefined = undefined;
 
     do {
-      const response = await $fetch<YouTubeApiCommentResponse>(
-        "https://www.googleapis.com/youtube/v3/comments",
-        {
-          params: {
-            parentId,
-            key: apiKey,
-            part: "snippet",
-            maxResults: 100,
-            pageToken,
-          },
-        }
+      const response = await fetchWithRetry(() =>
+        $fetch<YouTubeApiCommentResponse>(
+          "https://www.googleapis.com/youtube/v3/comments",
+          {
+            params: {
+              parentId,
+              key: apiKey,
+              part: "snippet",
+              maxResults: 100,
+              pageToken,
+            },
+          }
+        )
       );
 
       if (response.items) {
@@ -118,8 +148,8 @@ export const useYouTubeData = () => {
             author: snippet.authorDisplayName,
             content: snippet.textDisplay,
             likeCount: snippet.likeCount || 0,
-            replyCount: snippet.replyCount || 0,
-            replies: [], // reply không có reply con
+            replyCount: 0, // replies không có replies con
+            replies: [],
           });
         });
       }
@@ -130,16 +160,21 @@ export const useYouTubeData = () => {
     return replies;
   };
 
-  // Lấy comments cha + replies (nếu có)
+  // Lấy comments cha + replies (nếu có) - OPTIMIZED O(n)
   const getComments = async (
     videoId: string,
-    maxResults = 100
+    maxResults = 100,
+    onProgress?: (current: number, total: number) => void
   ): Promise<YouTubeComment[]> => {
     const comments: YouTubeComment[] = [];
     let pageToken: string | undefined = undefined;
+    let pageCount = 0;
+    const BATCH_SIZE = 10; // Fetch 10 replies cùng lúc
 
     try {
+      // Phase 1: Fetch tất cả comment cha (parent comments)
       do {
+        pageCount++;
         const response = await $fetch<YouTubeApiCommentThreadResponse>(
           `https://www.googleapis.com/youtube/v3/commentThreads`,
           {
@@ -165,21 +200,70 @@ export const useYouTubeData = () => {
               content: snippet.textDisplay,
               likeCount: snippet.likeCount || 0,
               replyCount: item.snippet.totalReplyCount || 0,
-              replies: [],
+              replies: [], // Sẽ fetch sau
             };
-
-            // Nếu có reply thì gọi thêm
-            if (item.snippet.totalReplyCount > 0) {
-              topComment.replies = await getReplies(item.id);
-            }
 
             comments.push(topComment);
           }
         }
 
         pageToken = response.nextPageToken;
-      } while (pageToken && comments.length < 2000);
 
+        // Log progress
+        console.log(
+          `Đã tải ${comments.length} comment cha (page ${pageCount})...`
+        );
+
+        // Update progress sau mỗi page
+        if (onProgress) {
+          onProgress(comments.length, -1);
+        }
+      } while (pageToken);
+
+      console.log(
+        `✓ Hoàn thành fetch ${comments.length} comment cha. Bắt đầu fetch replies...`
+      );
+
+      // Phase 2: Batch fetch replies song song - O(n/BATCH_SIZE) thay vì O(n)
+      const commentsWithReplies = comments.filter((c) => c.replyCount > 0);
+      console.log(
+        `→ Cần fetch replies cho ${commentsWithReplies.length} comments`
+      );
+
+      // Chia thành batches để tránh quá tải API
+      for (let i = 0; i < commentsWithReplies.length; i += BATCH_SIZE) {
+        const batch = commentsWithReplies.slice(i, i + BATCH_SIZE);
+
+        // Fetch parallel trong batch
+        const repliesPromises = batch.map((comment) =>
+          getReplies(comment.id)
+            .then((replies) => {
+              comment.replies = replies;
+              return comment;
+            })
+            .catch((error) => {
+              console.error(
+                `Lỗi khi fetch replies cho comment ${comment.id}:`,
+                error
+              );
+              return comment; // Giữ comment, bỏ qua replies lỗi
+            })
+        );
+
+        await Promise.all(repliesPromises);
+
+        // Update progress
+        const processed = Math.min(i + BATCH_SIZE, commentsWithReplies.length);
+        console.log(
+          `→ Đã fetch replies: ${processed}/${commentsWithReplies.length}`
+        );
+
+        if (onProgress) {
+          onProgress(comments.length, -1);
+        }
+      }
+
+      console.log(`✓ Hoàn thành! Tổng cộng ${comments.length} comments`);
       return comments;
     } catch (error: unknown) {
       const err = error as {
@@ -206,7 +290,8 @@ export const useYouTubeData = () => {
 
   // Fetch tất cả dữ liệu
   const fetchVideoData = async (
-    url: string
+    url: string,
+    onProgress?: (current: number, total: number) => void
   ): Promise<{
     videoData: VideoData;
     comments: YouTubeComment[];
@@ -217,11 +302,17 @@ export const useYouTubeData = () => {
     }
 
     const videoDetails = await getVideoDetails(videoId);
-    const comments = await getComments(videoId);
+
+    // Truyền callback progress với total từ video details
+    const comments = await getComments(videoId, 100, (current) => {
+      if (onProgress) {
+        onProgress(current, videoDetails.commentCount);
+      }
+    });
 
     const videoData: VideoData = {
       videoId,
-      title: videoDetails.title,
+      title: videoDetails.title || "Untitled",
       url,
       totalComments: videoDetails.commentCount,
       estimatedRange: estimateCommentRange(videoDetails.commentCount),

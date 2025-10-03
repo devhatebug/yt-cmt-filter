@@ -54,18 +54,26 @@ export const useCommentFilter = () => {
       .toLowerCase()
       .trim();
 
-    if (!stripped) return true; // Nếu sau khi bỏ tag mà rỗng => coi là generic (bỏ)
+    if (!stripped) return true; // Nếu sau khi bỏ tag mà rỗng => generic
 
     // Tách thành cụm từ (theo khoảng trắng)
     const phrases = stripped.split(/\s+/);
 
-    // Nếu có ít hơn 3 cụm từ => coi là generic => true (bỏ)
-    if (phrases.length < 3) {
+    // Nếu ít hơn 6 từ => generic
+    if (phrases.length < 6) {
       return true;
     }
 
-    // Nếu có từ 3 cụm từ trở lên => không generic => false (giữ lại)
-    return false;
+    // Đếm số lượng từ unique
+    const unique = new Set(phrases);
+
+    // Nếu tỉ lệ unique < 0.3 (30%) => coi là generic
+    const uniqueRatio = unique.size / phrases.length;
+    if (uniqueRatio < 0.3) {
+      return true;
+    }
+
+    return false; // Còn lại thì không generic
   };
 
   // Hàm kiểm tra một comment có pass filter không
