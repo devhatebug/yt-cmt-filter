@@ -48,6 +48,7 @@ const handleSubmit = () => {
           icon="i-heroicons-arrow-down-tray"
           color="primary"
           size="lg"
+          block
           class="w-full md:w-auto"
           @click="handleSubmit">
           Lấy dữ liệu
