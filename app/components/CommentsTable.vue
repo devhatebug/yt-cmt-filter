@@ -231,13 +231,11 @@ watch(searchQuery, () => {
           color="success"
           variant="outline"
           size="md"
+          icon="i-heroicons-arrow-down-tray"
+          label="Xuất Excel"
+          block
           class="w-full sm:w-auto"
-          @click="emit('export')">
-          <template #leading>
-            <TobiIcon name="i-heroicons-arrow-down-tray" />
-          </template>
-          Xuất Excel
-        </TobiButton>
+          @click="emit('export')" />
       </div>
     </div>
 
