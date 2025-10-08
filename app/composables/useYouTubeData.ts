@@ -171,6 +171,11 @@ export const useYouTubeData = () => {
     let pageCount = 0;
     const BATCH_SIZE = 10; // Fetch 10 replies cùng lúc
 
+    // Dedupe tracking - O(1) lookup
+    const seenIds = new Set<string>();
+    const seenContents = new Set<string>();
+    let duplicateCount = 0;
+
     try {
       // Phase 1: Fetch tất cả comment cha (parent comments)
       do {
@@ -192,15 +197,39 @@ export const useYouTubeData = () => {
         if (response.items) {
           for (const item of response.items) {
             const snippet = item.snippet.topLevelComment.snippet;
+            const commentId = item.id;
+            const commentContent = snippet.textDisplay.trim();
+
+            // Kiểm tra trùng lặp ID hoặc content
+            if (seenIds.has(commentId) || seenContents.has(commentContent)) {
+              duplicateCount++;
+              continue;
+            }
+
+            // kiểm tra comment không phải là tiếng anh ( chỉ chấp nhận comment bằng tiếng việt)
+            const vietnameseRegex =
+              /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
+
+            if (!vietnameseRegex.test(commentContent)) {
+              console.log(
+                "Bỏ qua comment không có dấu tiếng Việt:",
+                commentContent
+              );
+              continue;
+            }
+
+            // Thêm vào tracking sets
+            seenIds.add(commentId);
+            seenContents.add(commentContent);
 
             const topComment: YouTubeComment = {
-              id: item.id,
+              id: commentId,
               date: new Date(snippet.publishedAt),
               author: snippet.authorDisplayName,
               content: snippet.textDisplay,
               likeCount: snippet.likeCount || 0,
               replyCount: item.snippet.totalReplyCount || 0,
-              replies: [], // Sẽ fetch sau
+              replies: [],
             };
 
             comments.push(topComment);
@@ -224,11 +253,17 @@ export const useYouTubeData = () => {
         `✓ Hoàn thành fetch ${comments.length} comment cha. Bắt đầu fetch replies...`
       );
 
+      if (duplicateCount > 0) {
+        console.log(`⚠ Đã bỏ qua ${duplicateCount} comment cha trùng lặp`);
+      }
+
       // Phase 2: Batch fetch replies song song - O(n/BATCH_SIZE) thay vì O(n)
       const commentsWithReplies = comments.filter((c) => c.replyCount > 0);
       console.log(
         `→ Cần fetch replies cho ${commentsWithReplies.length} comments`
       );
+
+      let replyDuplicateCount = 0;
 
       // Chia thành batches để tránh quá tải API
       for (let i = 0; i < commentsWithReplies.length; i += BATCH_SIZE) {
@@ -238,7 +273,27 @@ export const useYouTubeData = () => {
         const repliesPromises = batch.map((comment) =>
           getReplies(comment.id)
             .then((replies) => {
-              comment.replies = replies;
+              // Dedupe replies
+              const uniqueReplies: YouTubeComment[] = [];
+              const replySeenIds = new Set<string>();
+              const replySeenContents = new Set<string>();
+
+              replies.forEach((reply) => {
+                const replyContent = reply.content.trim();
+
+                if (
+                  !replySeenIds.has(reply.id) &&
+                  !replySeenContents.has(replyContent)
+                ) {
+                  replySeenIds.add(reply.id);
+                  replySeenContents.add(replyContent);
+                  uniqueReplies.push(reply);
+                } else {
+                  replyDuplicateCount++;
+                }
+              });
+
+              comment.replies = uniqueReplies;
               return comment;
             })
             .catch((error) => {
@@ -263,7 +318,15 @@ export const useYouTubeData = () => {
         }
       }
 
-      console.log(`✓ Hoàn thành! Tổng cộng ${comments.length} comments`);
+      if (replyDuplicateCount > 0) {
+        console.log(`⚠ Đã bỏ qua ${replyDuplicateCount} reply trùng lặp`);
+      }
+
+      console.log(
+        `✓ Hoàn thành! Tổng cộng ${comments.length} comments (đã loại bỏ ${
+          duplicateCount + replyDuplicateCount
+        } trùng lặp)`
+      );
       return comments;
     } catch (error: unknown) {
       const err = error as {
