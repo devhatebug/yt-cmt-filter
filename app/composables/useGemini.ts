@@ -179,7 +179,7 @@ ${minimalData.map((c) => `[${c.index}] ${c.content}`).join("\n\n")}`;
     console.log(`📖 Đã đọc ${comments.length} comments từ file Excel`);
 
     // 3. Batch translation - O(n/BATCH_SIZE)
-    const BATCH_SIZE = 500; // 100 comments/batch để tránh token limit
+    const BATCH_SIZE = 100; // 100 comments/batch để tránh token limit
     const translated: TranslatedComment[] = [];
     const totalBatches = Math.ceil(comments.length / BATCH_SIZE);
 
