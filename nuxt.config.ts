@@ -12,6 +12,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       youtubeApiKey: "",
+      geminiApiKey: "",
     },
     vite: {
       plugins: [tailwindcss()],
