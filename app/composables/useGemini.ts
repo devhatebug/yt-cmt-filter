@@ -151,11 +151,9 @@ ${minimalData.map((c) => `[${c.index}] ${c.content}`).join("\n\n")}`;
 
     const comments: CommentToTranslate[] = [];
 
-    // Tìm header row và index của các cột
+    // Tìm header row và index cột "Nội dung cmt"
     let headerRowIndex = -1;
     let contentColIndex = -1;
-    let dateColIndex = -1;
-    let authorColIndex = -1;
     let typeColIndex = -1;
 
     for (let i = 0; i < rawData.length; i++) {
@@ -167,8 +165,6 @@ ${minimalData.map((c) => `[${c.index}] ${c.content}`).join("\n\n")}`;
             headerRowIndex = i;
             contentColIndex = j;
           }
-          if (cell === "Ngày cmt") dateColIndex = j;
-          if (cell === "Người cmt") authorColIndex = j;
           if (cell === "Loại") typeColIndex = j;
         }
         if (headerRowIndex !== -1) break;
@@ -182,6 +178,7 @@ ${minimalData.map((c) => `[${c.index}] ${c.content}`).join("\n\n")}`;
     console.log(`✅ Tìm thấy cột "Nội dung cmt" ở vị trí ${contentColIndex}`);
 
     // Extract comments từ dòng sau header
+    // Cột 0 = Ngày cmt, Cột 1 = Người cmt (fixed)
     for (let i = headerRowIndex + 1; i < rawData.length; i++) {
       const row = rawData[i];
       if (row && row[contentColIndex]) {
@@ -189,9 +186,8 @@ ${minimalData.map((c) => `[${c.index}] ${c.content}`).join("\n\n")}`;
         if (content) {
           comments.push({
             index: i - headerRowIndex - 1,
-            date: dateColIndex !== -1 ? String(row[dateColIndex] || "") : "",
-            author:
-              authorColIndex !== -1 ? String(row[authorColIndex] || "") : "",
+            date: String(row[0] || ""), // Cột đầu tiên = Ngày
+            author: String(row[1] || ""), // Cột thứ 2 = Người comment
             type: typeColIndex !== -1 ? String(row[typeColIndex] || "") : "",
             content: content,
           });
@@ -202,7 +198,7 @@ ${minimalData.map((c) => `[${c.index}] ${c.content}`).join("\n\n")}`;
     console.log(`📖 Đã đọc ${comments.length} comments từ file Excel`);
 
     // 3. Batch translation - O(n/BATCH_SIZE)
-    const BATCH_SIZE = 100; // 100 comments/batch để tránh token limit
+    const BATCH_SIZE = 50; // 50 comments/batch để tránh token limit
     const translated: TranslatedComment[] = [];
     const totalBatches = Math.ceil(comments.length / BATCH_SIZE);
 
