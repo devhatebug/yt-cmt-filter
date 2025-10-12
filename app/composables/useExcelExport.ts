@@ -41,34 +41,8 @@ export const useExcelExport = () => {
       }
     });
 
-    // Tạo worksheet
+    // Tạo worksheet từ data (không có metadata)
     const ws = XLSX.utils.json_to_sheet(data);
-
-    // Thêm metadata vào đầu sheet
-    const totalCommentsExported = data.length;
-    const mainComments = comments.length;
-    const totalReplies = totalCommentsExported - mainComments;
-
-    XLSX.utils.sheet_add_aoa(
-      ws,
-      [
-        ["Tên video:", videoData.title],
-        ["Link video:", videoData.url],
-        ["Tổng số comments trong video:", videoData.totalComments],
-        [
-          "Số comments đã xuất:",
-          `${totalCommentsExported} (${mainComments} chính + ${totalReplies} replies)`,
-        ],
-        ["Ngày xuất:", formatDate(new Date())],
-        [], // Dòng trống
-      ],
-      { origin: "A1" }
-    );
-
-    // Di chuyển data xuống
-    const range = XLSX.utils.decode_range(ws["!ref"]!);
-    range.e.r += 6;
-    ws["!ref"] = XLSX.utils.encode_range(range);
 
     // Tạo workbook
     const wb = XLSX.utils.book_new();

@@ -86,7 +86,7 @@ ${minimalData.map((c) => `[${c.index}] ${c.content}`).join("\n\n")}`;
 
     const response = await translateWithRetry(() =>
       ai.models.generateContent({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-2.0-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -144,35 +144,58 @@ ${minimalData.map((c) => `[${c.index}] ${c.content}`).join("\n\n")}`;
       throw new Error("Worksheet not found");
     }
 
+    // 2. Parse data - Tự động tìm cột "Nội dung cmt"
     const rawData = XLSX.utils.sheet_to_json(worksheet, {
       header: 1,
     }) as unknown[][];
 
-    // 2. Parse data (bỏ qua metadata rows)
     const comments: CommentToTranslate[] = [];
-    let startRow = 0;
 
-    // Tìm row bắt đầu của data (sau metadata)
+    // Tìm header row và index của các cột
+    let headerRowIndex = -1;
+    let contentColIndex = -1;
+    let dateColIndex = -1;
+    let authorColIndex = -1;
+    let typeColIndex = -1;
+
     for (let i = 0; i < rawData.length; i++) {
       const row = rawData[i];
-      if (row && row[0] === "Ngày cmt" && row[1] === "Người cmt") {
-        startRow = i + 1;
-        break;
+      if (row && Array.isArray(row)) {
+        for (let j = 0; j < row.length; j++) {
+          const cell = String(row[j] || "").trim();
+          if (cell === "Nội dung cmt") {
+            headerRowIndex = i;
+            contentColIndex = j;
+          }
+          if (cell === "Ngày cmt") dateColIndex = j;
+          if (cell === "Người cmt") authorColIndex = j;
+          if (cell === "Loại") typeColIndex = j;
+        }
+        if (headerRowIndex !== -1) break;
       }
     }
 
-    // Extract comments
-    for (let i = startRow; i < rawData.length; i++) {
+    if (contentColIndex === -1) {
+      throw new Error('Không tìm thấy cột "Nội dung cmt" trong file Excel');
+    }
+
+    console.log(`✅ Tìm thấy cột "Nội dung cmt" ở vị trí ${contentColIndex}`);
+
+    // Extract comments từ dòng sau header
+    for (let i = headerRowIndex + 1; i < rawData.length; i++) {
       const row = rawData[i];
-      if (row && row[2]) {
-        // Có nội dung
-        comments.push({
-          index: i - startRow,
-          date: String(row[0] || ""),
-          author: String(row[1] || ""),
-          type: String(row[2] || ""),
-          content: String(row[4] || ""), // Cột "Nội dung cmt"
-        });
+      if (row && row[contentColIndex]) {
+        const content = String(row[contentColIndex] || "").trim();
+        if (content) {
+          comments.push({
+            index: i - headerRowIndex - 1,
+            date: dateColIndex !== -1 ? String(row[dateColIndex] || "") : "",
+            author:
+              authorColIndex !== -1 ? String(row[authorColIndex] || "") : "",
+            type: typeColIndex !== -1 ? String(row[typeColIndex] || "") : "",
+            content: content,
+          });
+        }
       }
     }
 
