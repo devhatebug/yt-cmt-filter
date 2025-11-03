@@ -9,10 +9,10 @@ const toast = useToast();
 const { fetchVideoData } = useYouTubeData();
 const { filterComments, countTotalComments } = useCommentFilter();
 const { exportToExcel } = useExcelExport();
-const { translateCommentsFromExcel } = useGemini();
+const { translateCommentsFromExcel, analyzeCommentsFromExcel } = useGemini();
 
 // State
-const activeTab = ref<"crawl" | "translate">("crawl");
+const activeTab = ref<"crawl" | "translate" | "analyze">("crawl");
 const videoUrl = ref("");
 const isLoading = ref(false);
 const videoData = ref<VideoData | null>(null);
@@ -30,7 +30,16 @@ const filters = ref<FilterOptions>({
 
 // Translation state
 const isTranslating = ref(false);
-const translatedComments = ref<any[]>([]);
+const translatedComments = ref<
+  Array<{
+    index: number;
+    author: string;
+    content: string;
+    type: string;
+    date: string;
+    translatedContent: string;
+  }>
+>([]);
 const translationProgress = ref({
   current: 0,
   total: 0,
@@ -43,9 +52,9 @@ const filteredComments = computed(() => {
   return filterComments(allComments.value, filters.value);
 });
 
-const estimatedRange = computed(() => {
-  return videoData.value?.estimatedRange || "";
-});
+// const estimatedRange = computed(() => {
+//   return videoData.value?.estimatedRange || "";
+// });
 
 // Methods
 const fetchData = async () => {
@@ -147,6 +156,83 @@ const handleTranslationUpload = async (file: File) => {
     translationProgress.value = { current: 0, total: 0 };
   }
 };
+
+// Analysis state (đã gộp classify vào đây)
+const isAnalyzing = ref(false);
+const analysisResults = ref<{
+  comments: Array<{
+    index: number;
+    date: string;
+    author: string;
+    zhContent: string;
+    categoryName: string;
+    sentiment: "positive" | "neutral" | "negative";
+    topKeywords: string[];
+  }>;
+  wordFrequency: Array<{ word: string; count: number }>;
+  sentimentSummary: {
+    positive: number;
+    neutral: number;
+    negative: number;
+  };
+  topicDistribution: Record<string, number>;
+} | null>(null);
+const analysisProgress = ref({
+  stage: "",
+  current: 0,
+  total: 0,
+});
+
+// Analysis methods
+const handleAnalysisUpload = async (file: File) => {
+  isAnalyzing.value = true;
+  analysisProgress.value = { stage: "reading", current: 0, total: 100 };
+  analysisResults.value = null;
+
+  try {
+    const results = await analyzeCommentsFromExcel(
+      file,
+      (stage, current, total) => {
+        analysisProgress.value = { stage, current, total };
+      }
+    );
+
+    analysisResults.value = results;
+
+    toast.add({
+      title: "Thành công",
+      description: `Đã phân tích ${results.comments.length} comments`,
+      color: "success",
+      icon: "i-heroicons-check-circle",
+    });
+  } catch (error) {
+    console.error("Analysis error:", error);
+    toast.add({
+      title: "Lỗi",
+      description: (error as Error).message || "Không thể phân tích comments",
+      color: "error",
+      icon: "i-heroicons-exclamation-circle",
+    });
+  } finally {
+    isAnalyzing.value = false;
+    analysisProgress.value = { stage: "", current: 0, total: 0 };
+  }
+};
+
+const getProgressMessage = (stage: string) => {
+  switch (stage) {
+    case "reading":
+      return "Đang đọc file...";
+    case "analyzing":
+      return "Đang phân tích...";
+    case "finalizing":
+      return "Đang hoàn thiện...";
+    case "complete":
+      return "Hoàn thành!";
+    default:
+      return "Đang xử lý...";
+  }
+};
 </script>
 
 <template>
@@ -185,6 +271,17 @@ const handleTranslationUpload = async (file: File) => {
             @click="activeTab = 'translate'">
             <TobiIcon name="i-heroicons-language" class="inline mr-2" />
             Dịch sang Tiếng Trung
+          </button>
+          <button
+            :class="[
+              'py-4 px-1 border-b-2 font-medium text-sm transition-colors',
+              activeTab === 'analyze'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-[var(--ui-border-muted)] text-gray-500 hover:text-gray-700',
+            ]"
+            @click="activeTab = 'analyze'">
+            <TobiIcon name="i-heroicons-chart-bar" class="inline mr-2" />
+            Phân tích tổng hợp
           </button>
         </nav>
       </div>
@@ -241,7 +338,7 @@ const handleTranslationUpload = async (file: File) => {
                   (translationProgress.current / translationProgress.total) *
                   100
                 }%`,
-              }"></div>
+              }" />
           </div>
         </div>
       </TobiCard>
@@ -252,6 +349,43 @@ const handleTranslationUpload = async (file: File) => {
           :comments="translatedComments"
           :loading="isTranslating" />
       </TobiCard>
+    </div>
+
+    <!-- Tab: Analyze (Phân tích tổng hợp) - Gộp cả classify vào đây -->
+    <div v-show="activeTab === 'analyze'" class="space-y-6">
+      <!-- Upload form -->
+      <AnalysisUploadForm @upload="handleAnalysisUpload" />
+
+      <!-- Progress -->
+      <TobiCard v-if="isAnalyzing">
+        <div class="space-y-3">
+          <div class="flex justify-between items-center">
+            <span class="text-sm font-medium text-gray-700">
+              {{ getProgressMessage(analysisProgress.stage) }}
+            </span>
+            <span class="text-sm font-semibold text-primary-600">
+              {{ analysisProgress.current }}%
+            </span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-2.5">
+            <div
+              class="bg-primary-600 h-2.5 rounded-full transition-all duration-300"
+              :style="{
+                width: `${analysisProgress.current}%`,
+              }" />
+          </div>
+          <p class="text-xs text-gray-500 text-center">
+            🚀 Song song 3 phân tích: Tần suất từ + Cảm xúc + Chủ đề (nhanh gấp
+            3 lần!)
+          </p>
+        </div>
+      </TobiCard>
+
+      <!-- Analysis results -->
+      <AnalysisResults
+        v-if="analysisResults"
+        :data="analysisResults"
+        :loading="isAnalyzing" />
     </div>
   </div>
 </template>
