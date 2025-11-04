@@ -55,11 +55,11 @@ const getSentimentColor = (sentiment: string) => {
 const getSentimentLabel = (sentiment: string) => {
   switch (sentiment) {
     case "positive":
-      return "Tích cực";
+      return "积极";
     case "negative":
-      return "Tiêu cực";
+      return "消极";
     default:
-      return "Trung lập";
+      return "中性";
   }
 };
 
@@ -200,10 +200,10 @@ const exportData = () => {
 
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Kết quả phân tích");
+  XLSX.utils.book_append_sheet(wb, ws, "分析结果");
 
   const timestamp = Date.now();
-  XLSX.writeFile(wb, `phan_tich_binh_luan_${timestamp}.xlsx`);
+  XLSX.writeFile(wb, `评论分析_${timestamp}.xlsx`);
 };
 
 watch(searchQuery, () => {
@@ -245,7 +245,7 @@ watch(searchQuery, () => {
             <div class="flex justify-between items-center">
               <span class="text-sm flex items-center gap-2">
                 <div class="w-3 h-3 rounded-full bg-green-500" />
-                Tích cực
+                积极
               </span>
               <span class="font-semibold text-green-600">
                 {{ data.sentimentSummary.positive }}
@@ -260,7 +260,7 @@ watch(searchQuery, () => {
             <div class="flex justify-between items-center">
               <span class="text-sm flex items-center gap-2">
                 <div class="w-3 h-3 rounded-full bg-gray-500" />
-                Trung lập
+                中性
               </span>
               <span class="font-semibold text-gray-600">
                 {{ data.sentimentSummary.neutral }}
@@ -275,7 +275,7 @@ watch(searchQuery, () => {
             <div class="flex justify-between items-center">
               <span class="text-sm flex items-center gap-2">
                 <div class="w-3 h-3 rounded-full bg-red-500" />
-                Tiêu cực
+                消极
               </span>
               <span class="font-semibold text-red-600">
                 {{ data.sentimentSummary.negative }}

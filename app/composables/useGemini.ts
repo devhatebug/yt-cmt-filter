@@ -21,7 +21,7 @@ export const useGemini = () => {
     .map((k: string) => k.trim());
   const keyIndex = ref(0);
 
-  // � PERFORMANCE OPTIMIZATION:
+  // 🚀 PERFORMANCE OPTIMIZATION:
   // 1. Độ phức tạp thuật toán: O(n) thay vì O(n²) - dùng Map cho lookup O(1)
   // 2. Compact prompts: Giảm 60-70% tokens (i/t/c/w/n thay vì full names)
   // 3. Batch processing: 100-200 comments/batch (cân bằng speed vs rate limit)
@@ -32,6 +32,19 @@ export const useGemini = () => {
   // 2. Retry exponential backoff: 5s→10s→20s→40s→80s (rate limit)
   // 3. Auto API key rotation khi 429
   // 4. Sample data cho word frequency (200 thay vì toàn bộ)
+
+  // 🏷️ FIXED CATEGORIES - O(1) lookup với Map
+  const CATEGORIES = [
+    "怀旧情感与童年回忆", // 0: Cảm xúc hoài niệm & ký ức tuổi thơ
+    "角色与演员表现", // 1: Khen ngợi nhân vật & diễn viên
+    "剧情与艺术价值", // 2: Đánh giá về cốt truyện & giá trị nghệ thuật
+    "版本对比与比较", // 3: So sánh với phiên bản khác / phim khác
+    "文化共鸣与道德价值", // 4: Đồng cảm văn hoá & giá trị đạo đức
+    "语言与配音翻译", // 5: Ngôn ngữ & bản dịch (lồng tiếng)
+  ] as const;
+
+  // O(1) category lookup Map
+  const categoryMap = new Map(CATEGORIES.map((name, idx) => [idx, name]));
 
   const getNextApiKey = () => {
     const key = geminiKeys[keyIndex.value];
@@ -261,7 +274,7 @@ ${minimalData.map((d) => `[${d.i}] ${d.c}`).join("\n")}`;
     return translated;
   };
 
-  // OPTIMIZED: Classify batch với compact prompt
+  // OPTIMIZED: Classify với fixed categories (chỉ trả về index 0-5)
   const classifyBatch = async (
     batch: Array<{ index: number; content: string }>
   ): Promise<Array<{ index: number; categoryName: string }>> => {
@@ -269,8 +282,16 @@ ${minimalData.map((d) => `[${d.i}] ${d.c}`).join("\n")}`;
       apiKey: getNextApiKey(),
     });
 
-    // Compact prompt giảm 70% tokens
-    const prompt = `分类评论主题(2-6字中文标签). JSON: [{"i":idx,"c":"主题"}]
+    // Ultra-compact: AI chỉ trả về category index (0-5)
+    const prompt = `分类评论主题。JSON: [{"i":评论索引,"c":主题索引}]
+
+选择最匹配的主题(0-5):
+0=怀旧情感与童年回忆
+1=角色与演员表现
+2=剧情与艺术价值
+3=版本对比与比较
+4=文化共鸣与道德价值
+5=语言与配音翻译
 
 ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
 
@@ -285,8 +306,12 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
             items: {
               type: "object",
               properties: {
-                i: { type: "number" }, // index
-                c: { type: "string" }, // category
+                i: { type: "number" }, // comment index
+                c: {
+                  type: "number", // category index (0-5)
+                  minimum: 0,
+                  maximum: 5,
+                },
               },
               required: ["i", "c"],
             },
@@ -301,13 +326,13 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
 
     const result = JSON.parse(response.text) as Array<{
       i: number;
-      c: string;
+      c: number;
     }>;
 
-    // Map về format chuẩn
+    // O(1) Map lookup
     return result.map((r) => ({
       index: r.i,
-      categoryName: r.c,
+      categoryName: categoryMap.get(r.c) || CATEGORIES[0],
     }));
   };
 
@@ -543,11 +568,11 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
       } catch (error) {
         console.error(`❌ Lỗi khi phân loại batch ${batchNumber}:`, error);
 
-        // Fallback: Gán categoryName = "错误"
+        // Fallback: Gán categoryName = "未分类"
         batch.forEach((comment) => {
           classified.push({
             ...comment,
-            categoryName: "错误",
+            categoryName: "未分类",
           });
         });
       }
@@ -608,7 +633,7 @@ ${sample.join("\n")}`;
     }));
   };
 
-  // OPTIMIZED: Gộp Sentiment + Topic trong 1 API call (giảm 50% tokens!)
+  // OPTIMIZED: Gộp Sentiment + Topic trong 1 API call với fixed categories
   const analyzeSentimentAndTopicBatch = async (
     batch: Array<{ index: number; content: string }>
   ): Promise<
@@ -622,11 +647,17 @@ ${sample.join("\n")}`;
       apiKey: getNextApiKey(),
     });
 
-    // Gộp cả 2: Sentiment + Topic classification
-    const prompt = `Phân tích bình luận (cảm xúc + chủ đề). JSON: [{"i":idx,"s":"cảm_xúc","c":"chủ_đề"}]
+    // Ultra-compact: AI chỉ trả về index của category (0-5)
+    const prompt = `分析评论情感和主题。JSON: [{"i":评论索引,"s":"情感","c":主题索引}]
 
-Cảm xúc (s): "1"=tích cực, "0"=trung lập, "-1"=tiêu cực
-Chủ đề (c): 2-6 chữ mô tả ngắn gọn
+情感(s): "1"=积极, "0"=中性, "-1"=消极
+主题(c): 0-5的数字，选择最匹配的:
+0=怀旧情感与童年回忆
+1=角色与演员表现
+2=剧情与艺术价值
+3=版本对比与比较
+4=文化共鸣与道德价值
+5=语言与配音翻译
 
 ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
 
@@ -641,12 +672,16 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
             items: {
               type: "object",
               properties: {
-                i: { type: "number" }, // index
+                i: { type: "number" }, // comment index
                 s: {
                   type: "string", // sentiment
                   enum: ["1", "0", "-1"],
                 },
-                c: { type: "string" }, // category/topic
+                c: {
+                  type: "number", // category index (0-5)
+                  minimum: 0,
+                  maximum: 5,
+                },
               },
               required: ["i", "s", "c"],
             },
@@ -662,10 +697,10 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
     const result = JSON.parse(response.text) as Array<{
       i: number;
       s: "1" | "0" | "-1";
-      c: string;
+      c: number;
     }>;
 
-    // Map codes
+    // O(1) lookups
     const sentimentMap: Record<string, "positive" | "neutral" | "negative"> = {
       "1": "positive",
       "0": "neutral",
@@ -675,7 +710,7 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
     return result.map((r) => ({
       index: r.i,
       sentiment: sentimentMap[r.s] || "neutral",
-      categoryName: r.c,
+      categoryName: categoryMap.get(r.c) || CATEGORIES[0], // O(1) lookup
     }));
   };
 
