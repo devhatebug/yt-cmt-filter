@@ -43,8 +43,18 @@ export const useGemini = () => {
     "语言与配音翻译", // 5: Ngôn ngữ & bản dịch (lồng tiếng)
   ] as const;
 
+  const CATEGORIES_VI = [
+    "Cảm xúc hoài niệm & ký ức tuổi thơ",
+    "Khen ngợi nhân vật & diễn viên",
+    "Đánh giá về cốt truyện & giá trị nghệ thuật",
+    "So sánh với phiên bản khác / phim khác",
+    "Đồng cảm văn hoá & giá trị đạo đức",
+    "Ngôn ngữ & bản dịch (lồng tiếng)",
+  ] as const;
+
   // O(1) category lookup Map
   const categoryMap = new Map(CATEGORIES.map((name, idx) => [idx, name]));
+  const categoryMapVi = new Map(CATEGORIES_VI.map((name, idx) => [idx, name]));
 
   const getNextApiKey = () => {
     const key = geminiKeys[keyIndex.value];
@@ -285,13 +295,32 @@ ${minimalData.map((d) => `[${d.i}] ${d.c}`).join("\n")}`;
     // Ultra-compact: AI chỉ trả về category index (0-5)
     const prompt = `分类评论主题。JSON: [{"i":评论索引,"c":主题索引}]
 
-选择最匹配的主题(0-5):
+主题分类标准（0-5，选择最匹配的一个）:
+
 0=怀旧情感与童年回忆
+特征：表达对过去的怀念、童年回忆、时光流逝的感慨
+例子："小时候看的"、"童年回忆"、"怀念以前"、"还记得那时候"
+
 1=角色与演员表现
+特征：评论角色塑造、演员演技、配音表现、角色魅力
+例子："孙悟空演得好"、"六小龄童太棒了"、"这个演员很厉害"、"角色很生动"
+
 2=剧情与艺术价值
+特征：评价故事情节、艺术价值、文学性、深度、制作水平
+例子："剧情很精彩"、"经典之作"、"艺术价值高"、"制作精良"
+
 3=版本对比与比较
+特征：对比不同版本、不同翻拍、与其他作品比较
+例子："比新版好看"、"86版最经典"、"和原著不一样"、"其他版本都不如"
+
 4=文化共鸣与道德价值
+特征：讨论文化内涵、传统价值观、道德教育、人生哲理、寓意深刻
+例子："教育意义深刻"、"传承文化"、"有道德价值"、"富含哲理"
+注意：讽刺或批评性评论（如"让猴子看桃园"）不属于此类
+
 5=语言与配音翻译
+特征：评论配音质量、翻译水平、台词、口音、语言表达
+例子："配音很好听"、"翻译准确"、"台词经典"、"声音很配"
 
 ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
 
@@ -651,13 +680,33 @@ ${sample.join("\n")}`;
     const prompt = `分析评论情感和主题。JSON: [{"i":评论索引,"s":"情感","c":主题索引}]
 
 情感(s): "1"=积极, "0"=中性, "-1"=消极
-主题(c): 0-5的数字，选择最匹配的:
+
+主题(c)分类标准（0-5，选择最匹配的一个）:
+
 0=怀旧情感与童年回忆
+特征：表达对过去的怀念、童年回忆、时光流逝的感慨
+例子："小时候看的"、"童年回忆"、"怀念以前"、"还记得那时候"
+
 1=角色与演员表现
+特征：评论角色塑造、演员演技、配音表现、角色魅力
+例子："孙悟空演得好"、"六小龄童太棒了"、"这个演员很厉害"、"角色很生动"
+
 2=剧情与艺术价值
+特征：评价故事情节、艺术价值、文学性、深度、制作水平
+例子："剧情很精彩"、"经典之作"、"艺术价值高"、"制作精良"
+
 3=版本对比与比较
+特征：对比不同版本、不同翻拍、与其他作品比较
+例子："比新版好看"、"86版最经典"、"和原著不一样"、"其他版本都不如"
+
 4=文化共鸣与道德价值
+特征：讨论文化内涵、传统价值观、道德教育、人生哲理、寓意深刻
+例子："教育意义深刻"、"传承文化"、"有道德价值"、"富含哲理"
+注意：讽刺或批评性评论（如"让猴子看桃园"）不属于此类
+
 5=语言与配音翻译
+特征：评论配音质量、翻译水平、台词、口音、语言表达
+例子："配音很好听"、"翻译准确"、"台词经典"、"声音很配"
 
 ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
 
@@ -736,6 +785,7 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
       index: number;
       date: string;
       author: string;
+      viContent: string;
       zhContent: string;
       categoryName: string;
       sentiment: "positive" | "neutral" | "negative";
@@ -793,20 +843,44 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
     let headerRowIndex = -1;
     let dateColIndex = -1;
     let authorColIndex = -1;
+    let viContentColIndex = -1;
     let zhContentColIndex = -1;
 
     for (let i = 0; i < Math.min(10, rawData.length); i++) {
       const row = rawData[i];
       if (row && Array.isArray(row)) {
+        // Log toàn bộ header row để debug
+        const headers = row.map((cell, idx) => ({
+          index: idx,
+          value: String(cell || "").trim(),
+        }));
+        console.log(`🔍 Row ${i} headers:`, headers);
+
         for (let j = 0; j < row.length; j++) {
-          const cell = String(row[j] || "")
-            .trim()
-            .replace(/\s+/g, "");
+          const cellOriginal = String(row[j] || "").trim();
+          const cell = cellOriginal.replace(/\s+/g, "");
+
           if (cell === "日期") dateColIndex = j;
           if (cell === "账号名") authorColIndex = j;
+
+          // Tìm cột tiếng Việt - ưu tiên cột có "内容"
+          if (
+            (cellOriginal.includes("越南") ||
+              cellOriginal.includes("Việt") ||
+              cell.includes("越南") ||
+              cell.includes("Việt")) &&
+            (cellOriginal.includes("内容") || cellOriginal.includes("评论"))
+          ) {
+            viContentColIndex = j;
+            console.log(
+              `✅ Found VI content column at index ${j}: "${cellOriginal}"`
+            );
+          }
+
           if (cell.includes("中文") && cell.includes("内容")) {
             zhContentColIndex = j;
             headerRowIndex = i;
+            console.log(`✅ Found ZH column at index ${j}: "${cellOriginal}"`);
           }
         }
         if (headerRowIndex !== -1) break;
@@ -817,8 +891,21 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
       index: number;
       date: string;
       author: string;
+      viContent: string;
       zhContent: string;
     }> = [];
+
+    // Log first data row to debug
+    const firstRow = rawData[headerRowIndex + 1];
+    if (firstRow && Array.isArray(firstRow)) {
+      console.log(`🔍 First data row (all columns):`, firstRow);
+      console.log(`🔍 First data row mapped:`, {
+        date: firstRow[dateColIndex],
+        author: firstRow[authorColIndex],
+        viContent: firstRow[viContentColIndex],
+        zhContent: firstRow[zhContentColIndex],
+      });
+    }
 
     for (let i = headerRowIndex + 1; i < rawData.length; i++) {
       const row = rawData[i];
@@ -830,6 +917,10 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
             date: dateColIndex !== -1 ? String(row[dateColIndex] || "") : "",
             author:
               authorColIndex !== -1 ? String(row[authorColIndex] || "") : "",
+            viContent:
+              viContentColIndex !== -1
+                ? String(row[viContentColIndex] || "")
+                : "",
             zhContent: zhContent,
           });
         }
@@ -837,6 +928,13 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
     }
 
     console.log(`📖 Đã đọc ${comments.length} comments`);
+    console.log(
+      `🔍 Header indices - Date: ${dateColIndex}, Author: ${authorColIndex}, VI: ${viContentColIndex}, ZH: ${zhContentColIndex}`
+    );
+    console.log(
+      `📝 Sample viContent (first 50 chars):`,
+      comments.slice(0, 3).map((c) => c.viContent.substring(0, 50))
+    );
     onProgress?.("analyzing", 10, 100);
 
     const BATCH_SIZE = 150; // Optimal batch size
@@ -943,6 +1041,21 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
     onProgress?.("complete", 100, 100);
 
     console.log("✅ Hoàn thành phân tích tổng hợp!");
+    console.log(
+      `📊 Final data - Comments: ${finalComments.length}, Words: ${
+        wordFrequency.length
+      }, Sentiment: ${JSON.stringify(
+        sentimentSummary
+      )}, Topics: ${JSON.stringify(topicDistribution)}`
+    );
+    console.log(
+      `📝 Sample final comment with viContent:`,
+      finalComments.slice(0, 2).map((c) => ({
+        vi: c.viContent?.substring(0, 30),
+        zh: c.zhContent.substring(0, 30),
+      }))
+    );
+
     return {
       comments: finalComments,
       wordFrequency,

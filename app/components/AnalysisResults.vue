@@ -9,6 +9,7 @@ interface AnalysisComment {
   date: string;
   author: string;
   zhContent: string;
+  viContent?: string;
   categoryName: string;
   sentiment: "positive" | "neutral" | "negative";
   topKeywords: string[];
@@ -186,24 +187,96 @@ const columns: TableColumn<AnalysisComment>[] = [
   },
 ];
 
-// Export
+// Export với multiple sheets
 const exportData = () => {
-  const data = props.data.comments.map((c) => ({
+  console.log("🚀 Starting Excel export...");
+  console.log(
+    `📊 Data received - Comments: ${props.data.comments.length}, WordFreq: ${props.data.wordFrequency.length}`
+  );
+  console.log(
+    `📝 Sample comment viContent:`,
+    props.data.comments.slice(0, 2).map((c) => c.viContent?.substring(0, 30))
+  );
+
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: 评论详细数据 (Comments Detail)
+  const commentsData = props.data.comments.map((c) => ({
     序号: c.index + 1,
     日期: c.date,
     账号名: c.author,
-    评论内容: c.zhContent,
+    越南语评论: c.viContent || "",
+    中文评论: c.zhContent,
     主题分类: c.categoryName,
     情绪: getSentimentLabel(c.sentiment),
     关键词: c.topKeywords.join(", "),
   }));
+  console.log(`📄 Sheet 1 - Comments: ${commentsData.length} rows`);
+  const wsComments = XLSX.utils.json_to_sheet(commentsData);
+  XLSX.utils.book_append_sheet(wb, wsComments, "评论详细数据");
 
-  const ws = XLSX.utils.json_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "分析结果");
+  // Sheet 2: 词频统计 (Word Frequency)
+  const wordFreqData = props.data.wordFrequency.map((wf, idx) => ({
+    排名: idx + 1,
+    关键词: wf.word,
+    出现次数: wf.count,
+  }));
+  console.log(`📄 Sheet 2 - Word Frequency: ${wordFreqData.length} rows`);
+  const wsWordFreq = XLSX.utils.json_to_sheet(wordFreqData);
+  XLSX.utils.book_append_sheet(wb, wsWordFreq, "词频统计");
+
+  // Sheet 3: 情绪分布 (Sentiment Distribution)
+  const total = props.data.comments.length;
+  const sentimentData = [
+    {
+      情绪类型: "积极",
+      数量: props.data.sentimentSummary.positive,
+      百分比: `${((props.data.sentimentSummary.positive / total) * 100).toFixed(
+        1
+      )}%`,
+    },
+    {
+      情绪类型: "中性",
+      数量: props.data.sentimentSummary.neutral,
+      百分比: `${((props.data.sentimentSummary.neutral / total) * 100).toFixed(
+        1
+      )}%`,
+    },
+    {
+      情绪类型: "消极",
+      数量: props.data.sentimentSummary.negative,
+      百分比: `${((props.data.sentimentSummary.negative / total) * 100).toFixed(
+        1
+      )}%`,
+    },
+  ];
+  console.log(
+    `📄 Sheet 3 - Sentiment: ${sentimentData.length} rows`,
+    sentimentData
+  );
+  const wsSentiment = XLSX.utils.json_to_sheet(sentimentData);
+  XLSX.utils.book_append_sheet(wb, wsSentiment, "情绪分布");
+
+  // Sheet 4: 主题分布 (Topic Distribution)
+  const topicData = Object.entries(props.data.topicDistribution)
+    .sort((a, b) => b[1] - a[1])
+    .map(([topic, count], idx) => ({
+      排名: idx + 1,
+      主题: topic,
+      数量: count,
+      百分比: `${((count / total) * 100).toFixed(1)}%`,
+    }));
+  const wsTopic = XLSX.utils.json_to_sheet(topicData);
+  XLSX.utils.book_append_sheet(wb, wsTopic, "主题分布");
+  console.log(`📄 Sheet 4 - Topics: ${topicData.length} rows`);
+
+  console.log(`📚 Total sheets in workbook: ${wb.SheetNames.length}`);
+  console.log(`📚 Sheet names: ${wb.SheetNames.join(", ")}`);
 
   const timestamp = Date.now();
-  XLSX.writeFile(wb, `评论分析_${timestamp}.xlsx`);
+  const filename = `评论分析_${timestamp}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  console.log(`✅ Excel exported: ${filename}`);
 };
 
 watch(searchQuery, () => {
