@@ -34,27 +34,18 @@ export const useGemini = () => {
   // 4. Sample data cho word frequency (200 thay vì toàn bộ)
 
   // 🏷️ FIXED CATEGORIES - O(1) lookup với Map
+  // Theo file mẫu: T1-T6
   const CATEGORIES = [
-    "怀旧情感与童年回忆", // 0: Cảm xúc hoài niệm & ký ức tuổi thơ
-    "角色与演员表现", // 1: Khen ngợi nhân vật & diễn viên
-    "剧情与艺术价值", // 2: Đánh giá về cốt truyện & giá trị nghệ thuật
-    "版本对比与比较", // 3: So sánh với phiên bản khác / phim khác
-    "文化共鸣与道德价值", // 4: Đồng cảm văn hoá & giá trị đạo đức
-    "语言与配音翻译", // 5: Ngôn ngữ & bản dịch (lồng tiếng)
-  ] as const;
-
-  const CATEGORIES_VI = [
-    "Cảm xúc hoài niệm & ký ức tuổi thơ",
-    "Khen ngợi nhân vật & diễn viên",
-    "Đánh giá về cốt truyện & giá trị nghệ thuật",
-    "So sánh với phiên bản khác / phim khác",
-    "Đồng cảm văn hoá & giá trị đạo đức",
-    "Ngôn ngữ & bản dịch (lồng tiếng)",
+    "角色与演员表现", // 0: T1 - Nhân vật & Diễn viên
+    "文化共鸣与道德价值", // 1: T2 - Cộng hưởng văn hóa & Giá trị đạo đức
+    "怀旧情感与童年回忆", // 2: T3 - Hoài niệm & Ký ức tuổi thơ
+    "剧情与艺术价值", // 3: T4 - Cốt truyện & Giá trị nghệ thuật
+    "语言与配音翻译", // 4: T5 - Ngôn ngữ & Lồng tiếng/Phụ đề
+    "版本对比与比较", // 5: T6 - So sánh phiên bản & bản chuyển thể
   ] as const;
 
   // O(1) category lookup Map
   const categoryMap = new Map(CATEGORIES.map((name, idx) => [idx, name]));
-  const categoryMapVi = new Map(CATEGORIES_VI.map((name, idx) => [idx, name]));
 
   const getNextApiKey = () => {
     const key = geminiKeys[keyIndex.value];
@@ -622,7 +613,21 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
     // Sample 200 comments thay vì 100 để đại diện tốt hơn
     const sample = comments.length > 200 ? comments.slice(0, 200) : comments;
 
-    const prompt = `提取Top20关键词(2-4字). JSON: [{"w":"词","n":次数}]
+    const prompt = `提取高频关键词，统计每个有效词汇的出现次数。JSON: [{"w":"词","n":次数}]
+
+要求：
+1. 删除评论中的标点符号、表情等无意义字符，以及对比较结果无特殊影响的停用词
+2. 使用中文断词，去除虚词（的、了、是、在、如"的""了""是"等），只保留有实际意义的关键词
+3. 只保留具有实际意义的关键词，避免"如""等"之类无意义词
+4. 统计每个有效词汇的出现次数，并计算其在总数词汇中的占比（%），从而识别最高频关键词
+5. 关键词应该是2-4个字的词组，具有明确含义
+
+示例需要提取的关键词类型：
+- 角色名称：孙悟空、唐僧、猪八戒、沙僧、白龙马
+- 人物评价：演员、演技、表演、配角
+- 情感词汇：怀念、童年、回忆、经典
+- 艺术评价：剧情、制作、艺术、精彩
+- 版本对比：86版、新版、翻拍、原版
 
 ${sample.join("\n")}`;
 
@@ -683,30 +688,41 @@ ${sample.join("\n")}`;
 
 主题(c)分类标准（0-5，选择最匹配的一个）:
 
-0=怀旧情感与童年回忆
-特征：表达对过去的怀念、童年回忆、时光流逝的感慨
-例子："小时候看的"、"童年回忆"、"怀念以前"、"还记得那时候"
+0=角色与演员表现 (T1)
+特征：包扎观众对主要人物（孙悟空、唐僧、猪八戒、沙僧、白龙马等）的评价，以及对演员表现的点评
+关键词：孙悟空、唐僧、猪八戒、沙僧、白龙马、演员、演技、表演、配角、扮演、塑造、魅力、生动
+例子：称赞主要角色、评论演员演技、人物塑造、配角表现、角色魅力
+实例评论："连那些恐怖大王儿子的配角们都那么得惊险猴子一样"、"孙悟空太厉害了"、"六小龄童演得真好"
 
-1=角色与演员表现
-特征：评论角色塑造、演员演技、配音表现、角色魅力
-例子："孙悟空演得好"、"六小龄童太棒了"、"这个演员很厉害"、"角色很生动"
+1=文化共鸣与道德价值 (T2)
+特征：涉及儒、释、道思想中的哲理与道德价值，反映观众对社会议题或文化共鸣的思考
+关键词：善良、仁义、修行、信仰、智慧、道德、教育、哲理、人生、价值观、文化、传统、思想
+例子：评论道德价值、人生哲理、文化内涵、教育意义、思想深度
+实例评论："体现了仁义礼智信"、"教育意义深刻"、"传承中华文化"
 
-2=剧情与艺术价值
-特征：评价故事情节、艺术价值、文学性、深度、制作水平
-例子："剧情很精彩"、"经典之作"、"艺术价值高"、"制作精良"
+2=怀旧情感与童年回忆 (T3)
+特征：表达宣泄时显现感触妙、读经典作品的强烈怀旧情绪或童年回忆
+关键词：童年、回忆、怀念、小时候、长大、以前、那时候、经典、永恒、时光、青春、记忆、感动
+例子：回忆童年看剧经历、怀念过去时光、感慨岁月流逝、重温经典
+实例评论："小时候每年暑假必看"、"满满的童年回忆"、"怀念那个年代"、"陪伴我长大的经典"
 
-3=版本对比与比较
-特征：对比不同版本、不同翻拍、与其他作品比较
-例子："比新版好看"、"86版最经典"、"和原著不一样"、"其他版本都不如"
+3=剧情与艺术价值 (T4)
+特征：涉及刚性的儒值，情节发展，拍摄技巧、音乐、特效、服装等艺术层面的评价
+关键词：剧情、情节、故事、艺术、制作、精良、画面、音乐、特效、服装、导演、经典、精彩、深刻
+例子：评论故事情节、艺术价值、制作水平、拍摄技巧、视听效果
+实例评论："剧情紧凑精彩"、"艺术价值极高"、"制作精良"、"配乐经典"
 
-4=文化共鸣与道德价值
-特征：讨论文化内涵、传统价值观、道德教育、人生哲理、寓意深刻
-例子："教育意义深刻"、"传承文化"、"有道德价值"、"富含哲理"
-注意：讽刺或批评性评论（如"让猴子看桃园"）不属于此类
+4=语言与配音翻译 (T5)
+特征：涉及配音效果、语言版本、字幕翻译、台词质量等语言表达问题
+关键词：配音、声音、台词、翻译、字幕、普通话、粤语、方言、口音、语言、版本、中文、越南语
+例子：评论配音质量、翻译准确度、台词表达、语言版本
+实例评论："配音非常到位"、"翻译很准确"、"台词朗朗上口"、"粤语版更有味道"
 
-5=语言与配音翻译
-特征：评论配音质量、翻译水平、台词、口音、语言表达
-例子："配音很好听"、"翻译准确"、"台词经典"、"声音很配"
+5=版本对比与比较 (T6)
+特征：观众对1986版、2010版、电影版、动画版等不同版本的对比评价，包括剧情差异、演员对比、特效对比等
+关键词：1986、新版、老版、版本、翻拍、比较、对比、不如、超越、经典版、原版、重拍、改编
+例子：对比不同版本、比较翻拍作品、评价版本差异、经典版vs新版
+实例评论："86版永远是经典"、"新版不如老版"、"比2010版好太多"、"各版本各有特色"
 
 ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
 
@@ -965,6 +981,25 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
       // 🔥 1 API CALL duy nhất cho cả sentiment + topic (giảm 50% tokens!)
       const batchResult = await analyzeSentimentAndTopicBatch(batch);
 
+      // 🔍 Validate: Đảm bảo AI trả về đủ data cho tất cả comments
+      if (batchResult.length !== batch.length) {
+        console.warn(
+          `⚠️ AI trả về thiếu data! Expected ${batch.length}, got ${batchResult.length}`
+        );
+        // Fill missing với default values
+        const receivedIndices = new Set(batchResult.map((r) => r.index));
+        batch.forEach((comment) => {
+          if (!receivedIndices.has(comment.index)) {
+            console.warn(`⚠️ Missing data for comment index ${comment.index}`);
+            batchResult.push({
+              index: comment.index,
+              sentiment: "neutral",
+              categoryName: "未分类",
+            });
+          }
+        });
+      }
+
       // Tách kết quả
       const sentimentBatch = batchResult.map((r) => ({
         index: r.index,
@@ -991,11 +1026,40 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
     const wordFrequency = await analyzeWordFrequency(
       comments.map((c) => c.zhContent)
     );
+
+    // 🔍 Validate word frequency
+    if (wordFrequency.length === 0) {
+      console.warn(
+        "⚠️ AI không trả về word frequency! Sẽ extract từ comments..."
+      );
+      // Fallback: Extract basic keywords từ comments
+      const wordCount = new Map<string, number>();
+      comments.forEach((c) => {
+        const words = c.zhContent
+          .replace(/[，。！？、；：""''《》（）【】\s]/g, " ")
+          .split(" ")
+          .filter((w) => w.length >= 2 && w.length <= 4);
+        words.forEach((w) => {
+          wordCount.set(w, (wordCount.get(w) || 0) + 1);
+        });
+      });
+      wordFrequency.push(
+        ...Array.from(wordCount.entries())
+          .map(([word, count]) => ({ word, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 20)
+      );
+    }
+    console.log(`📊 Word frequency: ${wordFrequency.length} unique keywords`);
     onProgress?.("analyzing", 85, 100);
 
     onProgress?.("finalizing", 95, 100);
 
     // 5. Kết hợp kết quả - OPTIMIZED: O(n²) -> O(n) với Map
+    console.log(
+      `🗺️ Mapping results - Sentiment: ${sentimentResults.length}, Topic: ${topicResults.length}, Comments: ${comments.length}`
+    );
+
     const sentimentMap = new Map(
       sentimentResults.map((s) => [s.index, s.sentiment])
     );
@@ -1003,8 +1067,20 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
       topicResults.map((t) => [t.index, t.categoryName])
     );
 
+    // 🔍 Validate mapping coverage
+    const missingComments = comments.filter(
+      (c) => !sentimentMap.has(c.index) || !topicMap.has(c.index)
+    );
+    if (missingComments.length > 0) {
+      console.warn(
+        `⚠️ ${missingComments.length} comments missing sentiment/topic data!`,
+        missingComments.slice(0, 3).map((c) => c.index)
+      );
+    }
+
     // Pre-build word set cho O(1) lookup thay vì includes() O(m)
     const topWords = wordFrequency.slice(0, 50).map((wf) => wf.word);
+    console.log(`🔑 Using top ${topWords.length} keywords for mapping`);
 
     const finalComments = comments.map((comment) => {
       // O(1) Map lookup thay vì O(n) find()
@@ -1012,9 +1088,33 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
       const categoryName = topicMap.get(comment.index) || "未分类";
 
       // O(k) với k=50 top words thay vì O(n) filter trên toàn bộ wordFrequency
-      const commentWords = topWords
+      let commentWords = topWords
         .filter((word) => comment.zhContent.includes(word))
         .slice(0, 3);
+
+      // 🔥 FIX: Đảm bảo mọi comment đều có keywords
+      // Nếu không tìm thấy keyword nào trong top 50, extract từ content
+      if (commentWords.length === 0) {
+        // Lấy 2-4 chữ đầu tiên có nghĩa từ comment
+        const words = comment.zhContent
+          .replace(/[，。！？、；：""''《》（）【】\s]/g, " ")
+          .split(" ")
+          .filter((w) => w.length >= 2 && w.length <= 4)
+          .filter(
+            (w) =>
+              ![
+                "这个",
+                "那个",
+                "什么",
+                "怎么",
+                "为什么",
+                "的话",
+                "就是",
+              ].includes(w)
+          )
+          .slice(0, 3);
+        commentWords = words.length > 0 ? words : ["评论"];
+      }
 
       return {
         ...comment,
@@ -1048,11 +1148,28 @@ ${batch.map((c) => `[${c.index}] ${c.content}`).join("\n")}`;
         sentimentSummary
       )}, Topics: ${JSON.stringify(topicDistribution)}`
     );
+
+    // Verify keywords coverage
+    const commentsWithoutKeywords = finalComments.filter(
+      (c) => c.topKeywords.length === 0
+    );
     console.log(
-      `📝 Sample final comment with viContent:`,
-      finalComments.slice(0, 2).map((c) => ({
-        vi: c.viContent?.substring(0, 30),
+      `� Keywords coverage: ${
+        finalComments.length - commentsWithoutKeywords.length
+      }/${finalComments.length} comments have keywords`
+    );
+    if (commentsWithoutKeywords.length > 0) {
+      console.warn(
+        `⚠️ ${commentsWithoutKeywords.length} comments without keywords!`,
+        commentsWithoutKeywords.slice(0, 3)
+      );
+    }
+
+    console.log(
+      `📝 Sample final comments with keywords:`,
+      finalComments.slice(0, 5).map((c) => ({
         zh: c.zhContent.substring(0, 30),
+        keywords: c.topKeywords,
       }))
     );
 
